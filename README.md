@@ -1,4 +1,4 @@
-# CO2 App by Bread-Slice
+# CO2 calculator
 ![Frame 12 (2)](https://github.com/GovanDBT/CO2/assets/62579660/b0959fc4-4870-4119-98b1-6f3f01ffe58a)
 
 ## Project Summary
