@@ -34,14 +34,57 @@ const transportModes = [
   { key: 'walking', value: 'Walking' },
 ];
 
-// Emission factors (kg CO2 per unit)
+// Car models with fuel efficiency data
+const CAR_MODELS = [
+  {
+    key: 'wagonr',
+    value: 'Maruti Wagon R',
+    engineSize: '1.2 L (4 cylinders)',
+    fuelEfficiency: 24.43, // km/l
+    fuelType: 'petrol',
+  },
+  {
+    key: 'swift',
+    value: 'Maruti Swift',
+    engineSize: '1.2 L (3 cylinders)',
+    fuelEfficiency: 24.80, // km/l (manual) - using manual as default
+    fuelType: 'petrol',
+  },
+  {
+    key: 'punch',
+    value: 'Tata Punch',
+    engineSize: '1.2 L (3 cylinders)',
+    fuelEfficiency: 20.09, // km/l (petrol manual)
+    fuelType: 'petrol',
+  },
+  {
+    key: 'baleno',
+    value: 'Maruti Baleno',
+    engineSize: '1.2 L (4 cylinders)',
+    fuelEfficiency: 23.0, // km/l (average)
+    fuelType: 'petrol',
+  },
+  {
+    key: 'creta',
+    value: 'Hyundai Creta',
+    engineSize: '1.5 L (4 cylinders)',
+    fuelEfficiency: 17.4, // km/l (1.5 MPi petrol)
+    fuelType: 'petrol',
+  },
+];
+
+// Emission factors
 const EMISSION_FACTORS = {
-  car: 0.21, // kg CO2/km
-  bus: 0.101,
-  train: 0.041,
-  flight: 0.255,
+  // Fuel emission factors
+  petrol: 2.31, // kg CO2 per liter of petrol
+  diesel: 2.68, // kg CO2 per liter of diesel
+  // Transport emission factors (for non-car modes)
+  bus: 0.101, // kg CO2/km
+  train: 0.041, // kg CO2/km
+  flight: 0.255, // kg CO2/km
   bike: 0, // No emissions
   walking: 0, // No emissions
+  // Other emission factors
   electricity: 0.82, // kg CO2 per kWh (India avg grid factor)
   lpg: 2.983, // kg CO2 per kg LPG
   waste: 0.5, // kg CO2 per kg waste
@@ -56,6 +99,7 @@ export default function CarbonEmissionsTracker() {
   // State for inputs
   const [distance, setDistance] = useState('');
   const [transportMode, setTransportMode] = useState('car');
+  const [carModel, setCarModel] = useState('wagonr'); // Default car model
   const [electricity, setElectricity] = useState('');
   const [lpgUsage, setLpgUsage] = useState('');
   const [waste, setWaste] = useState('');
@@ -102,6 +146,7 @@ export default function CarbonEmissionsTracker() {
             // Optionally populate form fields
             if (lastEntry.distance) setDistance(lastEntry.distance.toString());
             if (lastEntry.transportMode) setTransportMode(lastEntry.transportMode);
+            if (lastEntry.carModel) setCarModel(lastEntry.carModel);
             if (lastEntry.electricity) setElectricity(lastEntry.electricity.toString());
             if (lastEntry.lpgUsage) setLpgUsage(lastEntry.lpgUsage.toString());
             if (lastEntry.waste) setWaste(lastEntry.waste.toString());
@@ -122,7 +167,22 @@ export default function CarbonEmissionsTracker() {
     const wasteKg = parseFloat(waste) || 0;
 
     // Calculate transport emissions
-    const transportEmissions = distanceKm * (EMISSION_FACTORS[transportMode] || 0);
+    let transportEmissions = 0;
+    
+    if (transportMode === 'car') {
+      // Calculate car emissions based on selected car model
+      const selectedCar = CAR_MODELS.find(car => car.key === carModel) || CAR_MODELS[0];
+      if (distanceKm > 0 && selectedCar.fuelEfficiency > 0) {
+        // Calculate fuel consumed: distance (km) / efficiency (km/l) = liters
+        const fuelConsumedLiters = distanceKm / selectedCar.fuelEfficiency;
+        // Calculate CO2: liters * emission factor
+        const fuelEmissionFactor = EMISSION_FACTORS[selectedCar.fuelType] || EMISSION_FACTORS.petrol;
+        transportEmissions = fuelConsumedLiters * fuelEmissionFactor;
+      }
+    } else {
+      // For other transport modes, use standard emission factors
+      transportEmissions = distanceKm * (EMISSION_FACTORS[transportMode] || 0);
+    }
 
     // Calculate electricity emissions
     const electricityEmissions = electricityKwh * EMISSION_FACTORS.electricity;
@@ -158,14 +218,23 @@ export default function CarbonEmissionsTracker() {
     setPointsEarned(pointsEarnedValue);
     setIsBelowAverage(belowAverage);
 
+    // Get selected car details for storage
+    const selectedCar = transportMode === 'car' 
+      ? (CAR_MODELS.find(car => car.key === carModel) || CAR_MODELS[0])
+      : null;
+
     // Save to AsyncStorage with credits and points
     const dataToSave = {
       distance: distanceKm,
       transportMode,
+      carModel: transportMode === 'car' ? carModel : null,
+      carModelName: selectedCar ? selectedCar.value : null,
+      carFuelEfficiency: selectedCar ? selectedCar.fuelEfficiency : null,
       electricity: electricityKwh,
       lpgUsage: lpgKg,
       waste: wasteKg,
       totalEmissions: total,
+      transportEmissions: transportEmissions,
       emissionsReduced: emissionsReducedValue,
       creditsEarned: creditsEarnedValue,
       pointsEarned: pointsEarnedValue,
@@ -280,7 +349,13 @@ export default function CarbonEmissionsTracker() {
               <AppText style={styles.inputLabel}>Mode of Transport</AppText>
             </View>
             <SelectList
-              setSelected={(val) => setTransportMode(val)}
+              setSelected={(val) => {
+                setTransportMode(val);
+                // Reset car model if switching away from car
+                if (val !== 'car') {
+                  setCarModel('wagonr');
+                }
+              }}
               data={transportModes}
               placeholder="Select transport mode"
               save="key"
@@ -302,6 +377,50 @@ export default function CarbonEmissionsTracker() {
               dropdownTextStyles={{ color: colors.white }}
             />
           </View>
+
+          {/* Car Model Dropdown - Only show when Car is selected */}
+          {transportMode === 'car' && (
+            <View style={styles.inputBlock}>
+              <View style={styles.inputHeader}>
+                <FontAwesome5 name="car-side" size={16} color={colors.white} />
+                <AppText style={styles.inputLabel}>Car Model</AppText>
+              </View>
+              <SelectList
+                setSelected={(val) => setCarModel(val)}
+                data={CAR_MODELS.map(car => ({ key: car.key, value: car.value }))}
+                placeholder="Select car model"
+                save="key"
+                defaultOption={{ key: 'wagonr', value: 'Maruti Wagon R' }}
+                arrowicon={<FontAwesome5 name="caret-down" size={16} color={colors.white} />}
+                boxStyles={{
+                  backgroundColor: 'transparent',
+                  borderColor: colors.white,
+                  borderWidth: 1,
+                  borderRadius: 8,
+                  height: 45,
+                  marginTop: 6,
+                }}
+                inputStyles={{ color: colors.white, fontWeight: 'bold' }}
+                dropdownStyles={{
+                  backgroundColor: colors.accent,
+                  borderColor: colors.white,
+                }}
+                dropdownTextStyles={{ color: colors.white }}
+              />
+              {carModel && (
+                <View style={styles.carInfo}>
+                  {(() => {
+                    const selectedCar = CAR_MODELS.find(c => c.key === carModel);
+                    return selectedCar ? (
+                      <AppText style={styles.carInfoText}>
+                        {selectedCar.engineSize} • {selectedCar.fuelEfficiency} km/l ({selectedCar.fuelType})
+                      </AppText>
+                    ) : null;
+                  })()}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Electricity Input */}
           <View style={styles.inputBlock}>
@@ -418,15 +537,33 @@ export default function CarbonEmissionsTracker() {
             <View style={styles.emissionBreakdown}>
               <AppText style={styles.breakdownTitle}>Breakdown:</AppText>
               <View style={styles.breakdownItem}>
-                <AppText style={styles.breakdownLabel}>Transport:</AppText>
+                <AppText style={styles.breakdownLabel}>
+                  Transport {transportMode === 'car' && savedData?.carModelName ? `(${savedData.carModelName})` : ''}:
+                </AppText>
                 <AppText style={styles.breakdownValue}>
-                  {(
-                    (parseFloat(distance) || 0) *
-                    (EMISSION_FACTORS[transportMode] || 0)
-                  ).toFixed(2)}{' '}
-                  kg
+                  {(() => {
+                    if (transportMode === 'car' && savedData?.carModel) {
+                      const car = CAR_MODELS.find(c => c.key === savedData.carModel);
+                      if (car && parseFloat(distance) > 0) {
+                        const fuelConsumed = parseFloat(distance) / car.fuelEfficiency;
+                        const emissions = fuelConsumed * (EMISSION_FACTORS[car.fuelType] || EMISSION_FACTORS.petrol);
+                        return `${emissions.toFixed(2)} kg`;
+                      }
+                    }
+                    return `${(
+                      (parseFloat(distance) || 0) *
+                      (EMISSION_FACTORS[transportMode] || 0)
+                    ).toFixed(2)} kg`;
+                  })()}
                 </AppText>
               </View>
+              {transportMode === 'car' && savedData?.carModelName && (
+                <View style={styles.carDetailRow}>
+                  <AppText style={styles.carDetailText}>
+                    {savedData.carModelName} • {savedData.carFuelEfficiency?.toFixed(2)} km/l
+                  </AppText>
+                </View>
+              )}
               <View style={styles.breakdownItem}>
                 <AppText style={styles.breakdownLabel}>Electricity:</AppText>
                 <AppText style={styles.breakdownValue}>
@@ -629,6 +766,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.secondary,
     fontWeight: 'bold',
+  },
+  carInfo: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    opacity: 0.7,
+  },
+  carInfoText: {
+    fontSize: 11,
+    color: colors.white,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  carDetailRow: {
+    marginTop: 6,
+    marginBottom: 8,
+    padding: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+    opacity: 0.6,
+  },
+  carDetailText: {
+    fontSize: 11,
+    color: colors.secondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
 
