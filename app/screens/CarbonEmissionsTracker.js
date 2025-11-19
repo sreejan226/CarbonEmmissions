@@ -63,6 +63,10 @@ export default function CarbonEmissionsTracker() {
   // State for results
   const [totalEmissions, setTotalEmissions] = useState(null);
   const [savedData, setSavedData] = useState(null);
+  const [creditsEarned, setCreditsEarned] = useState(0);
+  const [pointsEarned, setPointsEarned] = useState(0);
+  const [emissionsReduced, setEmissionsReduced] = useState(0);
+  const [isBelowAverage, setIsBelowAverage] = useState(false);
 
   // Load saved data on mount
   useEffect(() => {
@@ -82,6 +86,19 @@ export default function CarbonEmissionsTracker() {
           // If there's saved data, populate the form and show results
           if (lastEntry.totalEmissions) {
             setTotalEmissions(lastEntry.totalEmissions);
+            // Load credits and points if available
+            if (lastEntry.creditsEarned !== undefined) {
+              setCreditsEarned(lastEntry.creditsEarned);
+            }
+            if (lastEntry.pointsEarned !== undefined) {
+              setPointsEarned(lastEntry.pointsEarned);
+            }
+            if (lastEntry.emissionsReduced !== undefined) {
+              setEmissionsReduced(lastEntry.emissionsReduced);
+            }
+            if (lastEntry.isBelowAverage !== undefined) {
+              setIsBelowAverage(lastEntry.isBelowAverage);
+            }
             // Optionally populate form fields
             if (lastEntry.distance) setDistance(lastEntry.distance.toString());
             if (lastEntry.transportMode) setTransportMode(lastEntry.transportMode);
@@ -121,7 +138,27 @@ export default function CarbonEmissionsTracker() {
 
     setTotalEmissions(total);
 
-    // Save to AsyncStorage
+    // Calculate credits and points if emissions are below Indian average
+    let creditsEarnedValue = 0;
+    let pointsEarnedValue = 0;
+    let emissionsReducedValue = 0;
+    let belowAverage = false;
+    
+    if (total < INDIAN_AVERAGE_DAILY) {
+      // User emitted less than average - they get credits!
+      belowAverage = true;
+      emissionsReducedValue = INDIAN_AVERAGE_DAILY - total; // kg CO2 saved
+      creditsEarnedValue = emissionsReducedValue / 1000; // Convert kg to tons (1 CCU = 1 ton CO2)
+      pointsEarnedValue = creditsEarnedValue * 100; // 100 points per CCU
+    }
+
+    // Update state
+    setEmissionsReduced(emissionsReducedValue);
+    setCreditsEarned(creditsEarnedValue);
+    setPointsEarned(pointsEarnedValue);
+    setIsBelowAverage(belowAverage);
+
+    // Save to AsyncStorage with credits and points
     const dataToSave = {
       distance: distanceKm,
       transportMode,
@@ -129,6 +166,10 @@ export default function CarbonEmissionsTracker() {
       lpgUsage: lpgKg,
       waste: wasteKg,
       totalEmissions: total,
+      emissionsReduced: emissionsReducedValue,
+      creditsEarned: creditsEarnedValue,
+      pointsEarned: pointsEarnedValue,
+      isBelowAverage: belowAverage,
       calculatedAt: new Date().toISOString(),
     };
 
@@ -335,6 +376,36 @@ export default function CarbonEmissionsTracker() {
               Indian average: {INDIAN_AVERAGE_DAILY.toFixed(2)} kg CO₂/day
             </AppText>
 
+            {/* Credits and Points Earned Section */}
+            {isBelowAverage && (
+              <View style={styles.creditsEarnedSection}>
+                <View style={styles.creditsBadge}>
+                  <FontAwesome5 name="trophy" size={18} color={colors.secondary} />
+                  <AppText style={styles.creditsTitle}>Credits Earned!</AppText>
+                </View>
+                <View style={styles.creditsInfo}>
+                  <View style={styles.creditsRow}>
+                    <AppText style={styles.creditsLabel}>Emissions Reduced:</AppText>
+                    <AppText style={styles.creditsValue}>
+                      {emissionsReduced.toFixed(2)} kg CO₂
+                    </AppText>
+                  </View>
+                  <View style={styles.creditsRow}>
+                    <AppText style={styles.creditsLabel}>Carbon Credits (CCU):</AppText>
+                    <AppText style={styles.creditsValue}>
+                      {creditsEarned.toFixed(4)} CCU
+                    </AppText>
+                  </View>
+                  <View style={styles.creditsRow}>
+                    <AppText style={styles.creditsLabel}>Redeemable Points:</AppText>
+                    <AppText style={styles.creditsValue}>
+                      {pointsEarned.toFixed(0)} pts
+                    </AppText>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* Circular Progress Bar */}
             <View style={styles.progressContainer}>
               <CircularProgress
@@ -516,6 +587,45 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   breakdownValue: {
+    fontSize: 13,
+    color: colors.secondary,
+    fontWeight: 'bold',
+  },
+  creditsEarnedSection: {
+    marginTop: 20,
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: colors.primary,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+  },
+  creditsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  creditsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.secondary,
+    marginLeft: 8,
+  },
+  creditsInfo: {
+    marginTop: 8,
+  },
+  creditsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  creditsLabel: {
+    fontSize: 13,
+    color: colors.white,
+    opacity: 0.9,
+  },
+  creditsValue: {
     fontSize: 13,
     color: colors.secondary,
     fontWeight: 'bold',

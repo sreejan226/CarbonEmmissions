@@ -11,6 +11,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome5 } from '@expo/vector-icons';
 
@@ -61,9 +62,12 @@ export default function CarbonCreditsPage() {
   const [redeemablePoints, setRedeemablePoints] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
 
-  useEffect(() => {
-    loadEmissionsData();
-  }, []);
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadEmissionsData();
+    }, [])
+  );
 
   // Load emissions data from AsyncStorage
   const loadEmissionsData = async () => {
@@ -71,30 +75,50 @@ export default function CarbonCreditsPage() {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed = JSON.parse(data);
-        setEmissionsData(Array.isArray(parsed) ? parsed : [parsed]);
+        const entries = Array.isArray(parsed) ? parsed : [parsed];
+        setEmissionsData(entries);
 
         // Calculate lifetime emissions (sum of all daily emissions)
-        const total = Array.isArray(parsed)
-          ? parsed.reduce((sum, entry) => sum + (entry.totalEmissions || 0), 0)
-          : parsed.totalEmissions || 0;
-
+        const total = entries.reduce((sum, entry) => sum + (entry.totalEmissions || 0), 0);
         setLifetimeEmissions(total);
 
-        // Calculate emissions reduced (compared to Indian average)
-        // Assuming we're comparing daily average
-        const indianAvgDaily = (INDIAN_AVERAGE_YEARLY * 1000) / 365; // Convert tons to kg and divide by days
-        const entries = Array.isArray(parsed) ? parsed.length : 1;
-        const expectedEmissions = indianAvgDaily * entries;
-        const reduced = Math.max(0, expectedEmissions - total);
-        setEmissionsReduced(reduced);
+        // Calculate total credits and points from all entries that earned credits
+        // Only entries where emissions are below Indian average earn credits
+        let totalCreditsEarned = 0;
+        let totalPointsEarned = 0;
+        let totalEmissionsReduced = 0;
+        
+        entries.forEach((entry) => {
+          // Use stored credits/points if available (from new entries)
+          if (entry.isBelowAverage && entry.creditsEarned !== undefined) {
+            totalCreditsEarned += entry.creditsEarned || 0;
+            totalPointsEarned += entry.pointsEarned || 0;
+            totalEmissionsReduced += entry.emissionsReduced || 0;
+          } else if (entry.totalEmissions) {
+            // For old entries without credits field, calculate if below average
+            const indianAvgDaily = (INDIAN_AVERAGE_YEARLY * 1000) / 365; // 12.33 kg/day
+            if (entry.totalEmissions < indianAvgDaily) {
+              const emissionsReducedValue = indianAvgDaily - entry.totalEmissions;
+              const creditsEarnedValue = emissionsReducedValue / 1000;
+              const pointsEarnedValue = creditsEarnedValue * POINTS_PER_CCU;
+              
+              totalEmissionsReduced += emissionsReducedValue;
+              totalCreditsEarned += creditsEarnedValue;
+              totalPointsEarned += pointsEarnedValue;
+            }
+          }
+        });
 
-        // Convert to carbon credits (1 CCU = 1 ton CO2 = 1000 kg)
-        const credits = reduced / 1000; // Convert kg to tons
-        setCarbonCredits(credits);
-
-        // Calculate redeemable points
-        const points = credits * POINTS_PER_CCU;
-        setRedeemablePoints(points);
+        setEmissionsReduced(totalEmissionsReduced);
+        setCarbonCredits(totalCreditsEarned);
+        setRedeemablePoints(totalPointsEarned);
+      } else {
+        // No data yet - reset to zero
+        setLifetimeEmissions(0);
+        setEmissionsReduced(0);
+        setCarbonCredits(0);
+        setRedeemablePoints(0);
+        setEmissionsData([]);
       }
     } catch (error) {
       console.error('Error loading emissions data:', error);
@@ -147,11 +171,27 @@ export default function CarbonCreditsPage() {
             <AppText style={styles.cardTitle}>Carbon Credits Earned</AppText>
           </View>
           <AppText style={styles.cardValueLarge}>
-            {carbonCredits.toFixed(3)} CCU
+            {carbonCredits > 0 ? carbonCredits.toFixed(4) : '0.0000'} CCU
           </AppText>
           <AppText style={styles.cardSubtext}>
             1 CCU = 1 ton CO₂ avoided
           </AppText>
+          {carbonCredits > 0 ? (
+            <View style={styles.creditsBreakdown}>
+              <AppText style={styles.creditsBreakdownText}>
+                ✅ {emissionsData.filter(e => e.isBelowAverage || (e.totalEmissions && e.totalEmissions < (INDIAN_AVERAGE_YEARLY * 1000) / 365)).length} day(s) below average
+              </AppText>
+              <AppText style={styles.creditsBreakdownText}>
+                Keep emissions below {((INDIAN_AVERAGE_YEARLY * 1000) / 365).toFixed(2)} kg/day to earn more credits!
+              </AppText>
+            </View>
+          ) : (
+            <View style={styles.creditsBreakdown}>
+              <AppText style={styles.noCreditsText}>
+                💡 Keep your daily emissions below {((INDIAN_AVERAGE_YEARLY * 1000) / 365).toFixed(2)} kg CO₂/day to start earning carbon credits!
+              </AppText>
+            </View>
+          )}
         </View>
 
         {/* Redeemable Points Card */}
@@ -161,12 +201,44 @@ export default function CarbonCreditsPage() {
             <AppText style={styles.cardTitle}>Redeemable Points</AppText>
           </View>
           <AppText style={styles.cardValueLarge}>
-            {redeemablePoints.toFixed(0)} pts
+            {redeemablePoints > 0 ? redeemablePoints.toFixed(0) : '0'} pts
           </AppText>
           <AppText style={styles.cardSubtext}>
             {POINTS_PER_CCU} points per CCU
           </AppText>
         </View>
+
+        {/* Summary Section - Show total entries and credits earned */}
+        {emissionsData.length > 0 && (
+          <View style={styles.summarySection}>
+            <View style={styles.summaryHeader}>
+              <FontAwesome5 name="chart-line" size={18} color={colors.secondary} />
+              <AppText style={styles.summaryTitle}>Your Progress</AppText>
+            </View>
+            <View style={styles.summaryRow}>
+              <AppText style={styles.summaryLabel}>Total Entries:</AppText>
+              <AppText style={styles.summaryValue}>{emissionsData.length}</AppText>
+            </View>
+            <View style={styles.summaryRow}>
+              <AppText style={styles.summaryLabel}>Entries Earning Credits:</AppText>
+              <AppText style={styles.summaryValue}>
+                {emissionsData.filter(e => e.isBelowAverage || (e.totalEmissions && e.totalEmissions < (INDIAN_AVERAGE_YEARLY * 1000) / 365)).length}
+              </AppText>
+            </View>
+            <View style={styles.summaryRow}>
+              <AppText style={styles.summaryLabel}>Total Credits Earned:</AppText>
+              <AppText style={[styles.summaryValue, styles.highlightValue]}>
+                {carbonCredits > 0 ? carbonCredits.toFixed(4) : '0.0000'} CCU
+              </AppText>
+            </View>
+            <View style={styles.summaryRow}>
+              <AppText style={styles.summaryLabel}>Total Points:</AppText>
+              <AppText style={[styles.summaryValue, styles.highlightValue]}>
+                {redeemablePoints > 0 ? redeemablePoints.toFixed(0) : '0'} pts
+              </AppText>
+            </View>
+          </View>
+        )}
 
         {/* Government Providers Button */}
         <AppButton
@@ -422,6 +494,74 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     width: '100%',
+  },
+  creditsBreakdown: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.white,
+    opacity: 0.3,
+  },
+  creditsBreakdownText: {
+    fontSize: 12,
+    color: colors.secondary,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  noCreditsText: {
+    fontSize: 12,
+    color: colors.white,
+    opacity: 0.8,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  summarySection: {
+    backgroundColor: colors.accent,
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 10,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    opacity: 0.8,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.white,
+    opacity: 0.3,
+    paddingBottom: 10,
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.secondary,
+    marginLeft: 10,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 5,
+  },
+  summaryLabel: {
+    fontSize: 14,
+    color: colors.white,
+    opacity: 0.9,
+  },
+  summaryValue: {
+    fontSize: 14,
+    color: colors.white,
+    fontWeight: 'bold',
+  },
+  highlightValue: {
+    color: colors.secondary,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
