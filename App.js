@@ -30,6 +30,10 @@ import AboutScreen from './app/screens/AboutScreen';
 import ContactScreen from './app/screens/ContactScreen';
 // import settings screen
 import SettingsScreen from './app/screens/SettingsScreen';
+// import carbon emissions tracker screen
+import CarbonEmissionsTracker from './app/screens/CarbonEmissionsTracker';
+// import carbon credits page screen
+import CarbonCreditsPage from './app/screens/CarbonCreditsPage';
 
 
 // create navigation bar
@@ -55,6 +59,8 @@ export default function App() {
         <Drawer.Screen name="Region" component={RegionScreen} options={{ title: 'Overview' }} />
         <Drawer.Screen name="Footprint" component={CarbonFootprintScreen} options={{ title: 'My Carbon Footprint' }} />
         <Drawer.Screen name="Emission" component={CarbonEmissionScreen} options={{ title: 'Carbon Emission' }} />
+        <Drawer.Screen name="Tracker" component={CarbonEmissionsTracker} options={{ title: 'Emissions Tracker' }} />
+        <Drawer.Screen name="Credits" component={CarbonCreditsPage} options={{ title: 'Carbon Credits' }} />
         <Drawer.Screen name="Goals" component={GoalScreen} />
         <Drawer.Screen name="About" component={AboutScreen} />
         <Drawer.Screen name="Contact" component={ContactScreen} />

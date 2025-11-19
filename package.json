@@ -10,6 +10,7 @@
     "postinstall": "rn-nodeify --install crypto,fs,https --hack"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/masked-view": "^0.1.11",
     "@react-navigation/drawer": "^6.6.2",
     "@react-navigation/native": "^6.1.6",
