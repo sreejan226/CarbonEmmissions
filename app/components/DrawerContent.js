@@ -45,6 +45,18 @@ export function DrawerContent(props) {
             />
             <DrawerItem
                 style={styles.text}
+                icon={({color, size}) => ( <FontAwesome5  name="calculator" size={20} color="#fff"/> )}
+                label={ () => ( <Text style={styles.labelText}>Emissions Tracker</Text>) }
+                onPress={() => {props.navigation.navigate('Tracker')}}
+            />
+            <DrawerItem
+                style={styles.text}
+                icon={({color, size}) => ( <FontAwesome5  name="coins" size={20} color="#fff"/> )}
+                label={ () => ( <Text style={styles.labelText}>Carbon Credits</Text>) }
+                onPress={() => {props.navigation.navigate('Credits')}}
+            />
+            <DrawerItem
+                style={styles.text}
                 icon={({color, size}) => ( <FontAwesome5  name="globe-africa" size={20} color="#fff"/> )}
                 label={ () => ( <Text style={styles.labelText}>UN Goal</Text>) }
                 onPress={() => {props.navigation.navigate('Goals')}}
